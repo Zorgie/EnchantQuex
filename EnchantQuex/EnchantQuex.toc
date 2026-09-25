@@ -1,0 +1,13 @@
+## Interface: 16001
+## Title: EnchantQuex
+## Notes: Shows the expected disenchant value of items, priced with Auctionator scan data. Click the minimap button to edit material tables.
+## IconTexture: Interface\Icons\Trade_Engraving
+## Author: Lucas Taubert
+## Version: 0.2.0
+## OptionalDeps: Auctionator
+## SavedVariables: EnchantQuexDB
+
+Data.lua
+Core.lua
+Options.lua
+MinimapButton.lua
