@@ -38,6 +38,17 @@ If a combination has no table, the nearest item level within 5 (configurable) is
 Price per material = Auctionator's latest scanned price (`Auctionator.API.v1.GetAuctionPriceByItemID`).
 Materials without AH data are skipped and the total shows `+?`.
 
+## Enchanting helper
+
+When someone opens a trade with you and puts an item in the **Will not be traded** slot, hover that item and
+scroll the mouse wheel. Each step puts the next enchant on the item (wheel down goes backwards), cycling through
+the enchants that fit the item's slot and that you have the materials for in your bags. As usual, nothing is cast
+until both of you accept the trade. The item's tooltip shows how many enchants are available.
+
+Enchants can only be applied from the Enchanting window, so if it's closed the first scroll opens it and the next
+ones apply enchants. EnchantQuex also learns your recipes from that window, so it needs to have been open once per
+character, and again after learning new enchants. Recipes are matched to slots by their English names (`Enchant Bracer - ...`).
+
 ## Overrides
 
 Click the minimap button (or `/eqx`) to open the options panel. Under **Material table overrides**, pick a rarity,
@@ -55,6 +66,7 @@ item level. **Remove override** goes back to the Wowhead data. Overrides are sav
 | `/eqx toggle` | enable/disable the tooltip line |
 | `/eqx distance <n>` | how far to search neighbouring item levels (default 5) |
 | `/eqx breakdown` | always show the material breakdown instead of on Shift |
+| `/eqx enchants` | enable/disable the trade window enchant helper |
 | `/eqx minimap` | show/hide the minimap button |
 | `/eqx prices` | print every material's Auctionator price and how old it is |
 

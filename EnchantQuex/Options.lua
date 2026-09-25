@@ -200,9 +200,12 @@ local function build()
   ui.breakdown = checkbox(panel, "Always show the material breakdown (otherwise hold Shift)",
     function() return db().alwaysShowBreakdown end, function(v) db().alwaysShowBreakdown = v end)
   ui.breakdown:SetPoint("TOPLEFT", ui.enabled, "BOTTOMLEFT", 0, -2)
+  ui.enchantHelper = checkbox(panel, "Trade window: scroll over the \"Will not be traded\" item to cycle your enchants",
+    function() return db().enchantHelper end, function(v) db().enchantHelper = v end)
+  ui.enchantHelper:SetPoint("TOPLEFT", ui.breakdown, "BOTTOMLEFT", 0, -2)
   ui.minimap = checkbox(panel, "Show minimap button",
     function() return not db().minimap.hide end, function(v) EQ:SetMinimapShown(v) end)
-  ui.minimap:SetPoint("TOPLEFT", ui.breakdown, "BOTTOMLEFT", 0, -2)
+  ui.minimap:SetPoint("TOPLEFT", ui.enchantHelper, "BOTTOMLEFT", 0, -2)
 
   local distLabel = label(panel, "Use the nearest item level with data up to this many levels away:")
   distLabel:SetPoint("TOPLEFT", ui.minimap, "BOTTOMLEFT", 4, -10)
@@ -306,6 +309,7 @@ end
 local function refresh()
   ui.enabled:Refresh()
   ui.breakdown:Refresh()
+  ui.enchantHelper:Refresh()
   ui.minimap:Refresh()
   ui.distance:SetText(EnchantQuexDB.maxIlvlDistance)
   ui.qualityRadios.Refresh(sel.quality)
