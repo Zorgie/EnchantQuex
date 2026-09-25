@@ -68,6 +68,6 @@ py tools/scrape_wowhead.py --refresh  # re-download everything
 ```
 
 The scraper reads each material's "disenchanted-from" list and the "Disenchants into" item filters. It then
-fetches individual item pages for groups that don't have enough complete items yet (target: 300 disenchants
-from at least 3 items per group). It waits 5 seconds between requests. If Wowhead rate-limits it, it saves what
+fetches individual item pages for groups up to item level 40 until each has 1000 observed disenchants,
+rewriting Data.lua after every round. It waits 5 seconds between requests. If Wowhead rate-limits it, it saves what
 it has, and the next run resumes from the cache.

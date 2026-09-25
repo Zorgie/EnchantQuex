@@ -70,9 +70,13 @@ LIST_CAP = 1000
 
 # Items with fewer observed disenchants than this are ignored (too noisy).
 MIN_ITEM_SAMPLES = 5
-# Item pages are fetched for a group until it has this many disenchants and items.
-TARGET_SAMPLES = 300
-TARGET_ITEMS = 3
+# Item pages are fetched for a group until it has this many disenchants.
+TARGET_SAMPLES = 1000
+# Item pages are only fetched for groups at or below this item level.
+MAX_FETCH_ILVL = 40
+
+# Bump when the Data.lua layout changes; Core.lua checks it.
+DATA_FORMAT = 2
 
 _last_request = 0.0
 
@@ -226,19 +230,54 @@ def main():
     for g in groups.values():
         g["todo"].sort(key=lambda i: -max([d["outof"] for d in drops.get(i, {}).values()] or [0]))
 
+    for key, g in groups.items():
+        if key[2] > MAX_FETCH_ILVL:
+            g["todo"] = []
+
     def satisfied(g):
-        return g["samples"] >= TARGET_SAMPLES and g["items"] >= TARGET_ITEMS
+        return g["samples"] >= TARGET_SAMPLES
 
     todo_total = sum(len(g["todo"]) for g in groups.values() if not satisfied(g))
     print(f"{len(listed)} items, {len(done)} complete from material pages, "
           f"{len(groups)} groups, up to {todo_total} item pages needed")
 
-    # 2) item pages, round-robin over unsatisfied groups
-    blocked, fetched = None, 0
+    # 3) sample-weighted groups: chance and average quantity per material
+    def build_and_write():
+        acc = defaultdict(lambda: [0, 0, defaultdict(float), defaultdict(float)])
+        for iid in done:
+            per_mat = drops[iid]
+            samples = max(d["outof"] for d in per_mat.values())
+            if samples < MIN_ITEM_SAMPLES:
+                continue
+            a = acc[group_key(meta[iid])]
+            a[0] += samples
+            a[1] += 1
+            for mat, d in per_mat.items():
+                chance = d["count"] / d["outof"]
+                a[2][mat] += chance * samples             # -> weighted chance
+                a[3][mat] += chance * d["qty"] * samples  # -> weighted expected quantity
+        buckets = {}
+        for key, (samples, n, chance_acc, ev_acc) in acc.items():
+            mats = {}
+            for mat in chance_acc:
+                chance = chance_acc[mat] / samples
+                if chance > 0:
+                    mats[mat] = (chance, ev_acc[mat] / chance_acc[mat])
+            buckets[key] = (samples, n, mats)
+        write_lua(buckets)
+        return buckets
+
+    # 2) item pages, round-robin over unsatisfied groups. Data.lua is rewritten
+    #    after every round so an interrupted run still leaves usable data.
+    blocked, fetched, written = None, 0, 0
     while True:
         pending = [g for g in groups.values() if g["todo"] and not satisfied(g)]
         if not pending:
             break
+        if fetched > written:
+            build_and_write()
+            written = fetched
+            print(f"Data.lua updated ({fetched} item pages read); {len(pending)} groups still below target")
         for g in pending:
             iid = g["todo"].pop(0)
             cached = os.path.exists(os.path.join(CACHE_DIR, f"item_{iid}.html"))
@@ -265,33 +304,11 @@ def main():
                     g["samples"] += samples
                     g["items"] += 1
 
-    # 3) sample-weighted groups: chance and average quantity per material
-    acc = defaultdict(lambda: [0, 0, defaultdict(float), defaultdict(float)])
-    for iid in done:
-        per_mat = drops[iid]
-        samples = max(d["outof"] for d in per_mat.values())
-        if samples < MIN_ITEM_SAMPLES:
-            continue
-        a = acc[group_key(meta[iid])]
-        a[0] += samples
-        a[1] += 1
-        for mat, d in per_mat.items():
-            chance = d["count"] / d["outof"]
-            a[2][mat] += chance * samples             # -> weighted chance
-            a[3][mat] += chance * d["qty"] * samples  # -> weighted expected quantity
-    buckets = {}
-    for key, (samples, n, chance_acc, ev_acc) in acc.items():
-        mats = {}
-        for mat in chance_acc:
-            chance = chance_acc[mat] / samples
-            if chance > 0:
-                mats[mat] = (chance, ev_acc[mat] / chance_acc[mat])
-        buckets[key] = (samples, n, mats)
-
-    write_lua(buckets)
-    thin = sum(1 for g in groups.values() if not satisfied(g))
+    buckets = build_and_write()
+    thin = sum(1 for k, g in groups.items() if k[2] <= MAX_FETCH_ILVL and not satisfied(g))
     print(f"Wrote {OUT_FILE}: {len(buckets)} groups from {len(done)} items "
-          f"({fetched} item pages read); {thin} groups below target")
+          f"({fetched} item pages read); {thin} groups at ilvl <= {MAX_FETCH_ILVL} below "
+          f"{TARGET_SAMPLES} disenchants")
 
 
 def write_lua(buckets):
@@ -301,6 +318,7 @@ def write_lua(buckets):
         "-- buckets[\"quality:classID:itemLevel\"] = { disenchants, itemCount, matID, chance, avgQty, ... }",
         "local _, ns = ...",
         "ns.Data = {",
+        f"  format = {DATA_FORMAT},",
         f'  generated = "{date.today().isoformat()}",',
         "  mats = {",
     ]

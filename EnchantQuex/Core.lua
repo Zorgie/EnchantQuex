@@ -1,5 +1,6 @@
 local ADDON, ns = ...
 local Data = ns.Data
+local DATA_FORMAT = 2 -- must match tools/scrape_wowhead.py
 
 local EQ = {}
 ns.EQ = EQ
@@ -285,6 +286,12 @@ frame:SetScript("OnEvent", function(self, event, name)
     if EnchantQuexDB[k] == nil then EnchantQuexDB[k] = v end
   end
   EnchantQuexDB.minSamples = nil -- removed setting
+  if Data.format ~= DATA_FORMAT then
+    -- An old Data.lua would be misread (material IDs taken as quantities).
+    Data.buckets = {}
+    EQ.Print("|cffff6060Data.lua is outdated or from a different version; only your overrides will be used. "
+      .. "Reinstall the addon or re-run tools/scrape_wowhead.py.|r")
+  end
   hookTooltips()
   for _, fn in ipairs(ns.onLoad) do fn() end
   self:UnregisterEvent("ADDON_LOADED")
