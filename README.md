@@ -49,6 +49,21 @@ Enchants can only be applied from the Enchanting window, so if it's closed the f
 ones apply enchants. EnchantQuex also learns your recipes from that window, so it needs to have been open once per
 character, and again after learning new enchants. Recipes are matched to slots by their English names (`Enchant Bracer - ...`).
 
+## Trade announcements
+
+After every completed trade, EnchantQuex announces what changed hands, with item links, quantities and money, plus
+any enchant applied through the **Will not be traded** slot:
+
+```
+Quex traded Bob: [Heavy Linen Gloves], 50s
+Bob traded Quex: [Strange Dust] x4
+Quex enchanted Bob's [Heavy Linen Gloves] with Minor Health
+```
+
+It goes to party chat when you're in a group and to /say otherwise. The game only lets addons use /say outside
+instances in response to a key press or click, so there the message is sent on your next key press (or click in
+the game world).
+
 ## Overrides
 
 Click the minimap button (or `/eqx`) to open the options panel. Under **Material table overrides**, pick a rarity,
@@ -67,6 +82,7 @@ item level. **Remove override** goes back to the Wowhead data. Overrides are sav
 | `/eqx distance <n>` | how far to search neighbouring item levels (default 5) |
 | `/eqx breakdown` | always show the material breakdown instead of on Shift |
 | `/eqx enchants` | enable/disable the trade window enchant helper |
+| `/eqx announce` | enable/disable trade announcements |
 | `/eqx minimap` | show/hide the minimap button |
 | `/eqx prices` | print every material's Auctionator price and how old it is |
 

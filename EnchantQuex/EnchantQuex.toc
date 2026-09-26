@@ -11,5 +11,6 @@
 Data.lua
 Core.lua
 EnchantHelper.lua
+TradeAnnounce.lua
 Options.lua
 MinimapButton.lua

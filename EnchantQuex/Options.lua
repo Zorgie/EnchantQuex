@@ -203,9 +203,12 @@ local function build()
   ui.enchantHelper = checkbox(panel, "Trade window: scroll over the \"Will not be traded\" item to cycle your enchants",
     function() return db().enchantHelper end, function(v) db().enchantHelper = v end)
   ui.enchantHelper:SetPoint("TOPLEFT", ui.breakdown, "BOTTOMLEFT", 0, -2)
+  ui.announce = checkbox(panel, "Announce completed trades in party chat (or /say when not in a party)",
+    function() return db().announceTrades end, function(v) db().announceTrades = v end)
+  ui.announce:SetPoint("TOPLEFT", ui.enchantHelper, "BOTTOMLEFT", 0, -2)
   ui.minimap = checkbox(panel, "Show minimap button",
     function() return not db().minimap.hide end, function(v) EQ:SetMinimapShown(v) end)
-  ui.minimap:SetPoint("TOPLEFT", ui.enchantHelper, "BOTTOMLEFT", 0, -2)
+  ui.minimap:SetPoint("TOPLEFT", ui.announce, "BOTTOMLEFT", 0, -2)
 
   local distLabel = label(panel, "Use the nearest item level with data up to this many levels away:")
   distLabel:SetPoint("TOPLEFT", ui.minimap, "BOTTOMLEFT", 4, -10)
@@ -310,6 +313,7 @@ local function refresh()
   ui.enabled:Refresh()
   ui.breakdown:Refresh()
   ui.enchantHelper:Refresh()
+  ui.announce:Refresh()
   ui.minimap:Refresh()
   ui.distance:SetText(EnchantQuexDB.maxIlvlDistance)
   ui.qualityRadios.Refresh(sel.quality)

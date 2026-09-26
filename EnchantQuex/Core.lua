@@ -11,6 +11,7 @@ local DEFAULTS = {
   maxIlvlDistance = 5,        -- how far to look for a neighbouring item level table
   alwaysShowBreakdown = false,-- otherwise hold Shift
   enchantHelper = true,       -- scroll over the trade enchant slot to cycle enchants
+  announceTrades = true,      -- announce completed trades in party chat or /say
   overrides = {},             -- ["quality:classID:ilvl"] = { [matID] = { chance, avgQty } }
   minimap = { hide = false, angle = 225 },
 }
@@ -232,8 +233,9 @@ local function showStatus()
   EQ.Print(format("%s, ilvl distance %d, breakdown %s, %d override(s). Data from %s.",
     db.enabled and "enabled" or "disabled", db.maxIlvlDistance,
     db.alwaysShowBreakdown and "always" or "on Shift", n, Data.generated))
-  EQ.Print(format("Trade enchant helper %s, %d known enchant(s).",
-    db.enchantHelper and "enabled" or "disabled", EQ:NumKnownEnchants()))
+  EQ.Print(format("Trade enchant helper %s, %d known enchant(s). Trade announcements %s.",
+    db.enchantHelper and "enabled" or "disabled", EQ:NumKnownEnchants(),
+    db.announceTrades and "enabled" or "disabled"))
   if not EQ:HasPriceSource() then EQ.Print("|cffff6060Auctionator is not loaded - no prices.|r") end
 end
 
@@ -254,6 +256,8 @@ SlashCmdList.ENCHANTQUEX = function(input)
     db.alwaysShowBreakdown = not db.alwaysShowBreakdown
   elseif cmd == "enchants" then
     db.enchantHelper = not db.enchantHelper
+  elseif cmd == "announce" then
+    db.announceTrades = not db.announceTrades
   elseif cmd == "minimap" then
     EQ:SetMinimapShown(db.minimap.hide)
   elseif cmd == "prices" then
@@ -264,7 +268,7 @@ SlashCmdList.ENCHANTQUEX = function(input)
     end
     return
   elseif cmd ~= "status" then
-    EQ.Print("/eqx (options) | status | toggle | distance <n> | breakdown | enchants | minimap | prices")
+    EQ.Print("/eqx (options) | status | toggle | distance <n> | breakdown | enchants | announce | minimap | prices")
     return
   end
   showStatus()
