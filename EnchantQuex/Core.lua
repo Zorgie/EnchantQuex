@@ -14,6 +14,12 @@ local DEFAULTS = {
   announceTrades = true,      -- announce completed trades in party chat or /say
   overrides = {},             -- ["quality:classID:ilvl"] = { [matID] = { chance, avgQty } }
   minimap = { hide = false, angle = 225 },
+  -- Disenchant scan tab: filter texts (gold / percent, nil = no limit) and sorting
+  deScan = { todayOnly = true, sortKey = "pct", sortAsc = true },
+  -- Disenchant scan tab: [itemID] = { name, quality, ilvl, equipLoc } for weapons and
+  -- armor seen in Auctionator's data. Static item data, kept so the tab doesn't depend
+  -- on the client's item cache (which evicts items while thousands are loading).
+  itemInfo = {},
 }
 
 EQ.CLASS_WEAPON, EQ.CLASS_ARMOR = 2, 4
@@ -79,6 +85,11 @@ end
 function EQ:GetOutcome(item)
   local _, _, quality, ilvl, _, _, _, _, equipLoc, _, _, classID = GetItemInfo(item)
   if not quality then return nil end -- not cached yet
+  return self:GetOutcomeByInfo(quality, classID, ilvl, equipLoc)
+end
+
+-- GetOutcome for an item described by its GetItemInfo fields.
+function EQ:GetOutcomeByInfo(quality, classID, ilvl, equipLoc)
   if (classID ~= EQ.CLASS_WEAPON and classID ~= EQ.CLASS_ARMOR) or not EQ.QUALITY_NAMES[quality]
       or NOT_DISENCHANTABLE_SLOTS[equipLoc] then
     return nil
@@ -120,7 +131,11 @@ end
 
 -- Returns totalCopper, outcome, missingPrices (count of mats without a price).
 function EQ:GetValue(item)
-  local outcome = self:GetOutcome(item)
+  return self:GetOutcomeValue(self:GetOutcome(item))
+end
+
+-- GetValue for an outcome from GetOutcome / GetOutcomeByInfo.
+function EQ:GetOutcomeValue(outcome)
   if not outcome then return nil end
   local total, missing = 0, 0
   for _, m in ipairs(outcome.mats) do
