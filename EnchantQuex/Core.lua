@@ -15,7 +15,12 @@ local DEFAULTS = {
   overrides = {},             -- ["quality:classID:ilvl"] = { [matID] = { chance, avgQty } }
   minimap = { hide = false, angle = 225 },
   -- Disenchant scan tab: filter texts (gold / percent, nil = no limit) and sorting
-  deScan = { todayOnly = true, sortKey = "pct", sortAsc = true },
+  deScan = { currentOnly = true, sortKey = "pct", sortAsc = true },
+  -- Disenchant scan tab: [itemID] = time() Auctionator last recorded a price for it,
+  -- and the start time of the last completed Auctionator full scan. Items last seen
+  -- before that scan weren't in it, so they are sold out.
+  lastSeen = {},
+  lastFullScan = nil,
   -- Disenchant scan tab: [itemID] = { name, quality, ilvl, equipLoc } for weapons and
   -- armor seen in Auctionator's data. Static item data, kept so the tab doesn't depend
   -- on the client's item cache (which evicts items while thousands are loading).

@@ -12,6 +12,13 @@ local EQ = ns.EQ
 -- lowest buyout, ... }). That table is internal to Auctionator, so every access
 -- is guarded and the tab says so if it isn't there.
 --
+-- Auctionator keeps an item's last price until the item is seen again and only
+-- records the day it was seen, so a sold-out item looks as current as a listed
+-- one. To tell them apart we note when Auctionator last recorded a price for each
+-- weapon/armor item (EnchantQuexDB.lastSeen) and when the latest completed full
+-- scan started (EnchantQuexDB.lastFullScan). Items last seen before that weren't
+-- in the scan, so they are sold out.
+--
 -- The tab is added to the (modern) auction house with LibAHTab, which ships with
 -- Auctionator.
 
@@ -34,7 +41,7 @@ local COLUMNS = {
 }
 
 local panel, ui
-local all = {}     -- every candidate: { id, name, icon, quality, ilvl, cost, value, partial, pct, qty, qtyKnown, age }
+local all = {}     -- every candidate: { id, name, icon, quality, ilvl, cost, value, partial, pct, qty, qtyKnown, current }
 local shown = {}   -- `all` filtered and sorted
 local waiting = 0  -- items skipped because their info isn't cached yet
 local offset = 0   -- first visible index into `shown`
@@ -111,12 +118,17 @@ local function collect()
         local value, _, missing = EQ:GetOutcomeValue(EQ:GetOutcomeByInfo(quality, classID, ilvl, equipLoc))
         if value and value > 0 then
           local qty = available(entry)
+          local current
+          if EnchantQuexDB.lastFullScan then
+            current = (EnchantQuexDB.lastSeen[id] or 0) >= EnchantQuexDB.lastFullScan
+          else
+            current = priceAge(id) == 0 -- no full scan tracked yet: fall back to "seen today"
+          end
           all[#all + 1] = {
             id = id, name = name, quality = quality, ilvl = ilvl,
             icon = select(5, GetItemInfoInstant(id)),
             cost = cost, value = value, partial = missing > 0, pct = cost / value * 100,
-            qty = qty or 0, qtyKnown = qty ~= nil,
-            age = priceAge(id),
+            qty = qty or 0, qtyKnown = qty ~= nil, current = current,
           }
         end
       end
@@ -144,7 +156,7 @@ local function applyFilters()
   wipe(shown)
   for _, row in ipairs(all) do
     if within(row.cost, minCost, maxCost) and within(row.value, minValue, maxValue)
-        and within(row.pct, minPct, maxPct) and (not s.todayOnly or row.age == 0) then
+        and within(row.pct, minPct, maxPct) and (not s.currentOnly or row.current) then
       shown[#shown + 1] = row
     end
   end
@@ -213,7 +225,14 @@ local function setStatus()
   else
     text = format("%d of %d items shown", #shown, #all)
     if waiting > 0 then text = text .. format(" |cff808080(%d still loading item info)|r", waiting) end
-    if settings().todayOnly then text = text .. " |cff808080- only prices from today's scans|r" end
+    if settings().currentOnly then
+      local scan = EnchantQuexDB.lastFullScan
+      if scan then
+        text = text .. format(" |cff808080- sold-out items hidden (full scan %s ago)|r", SecondsToTime(max(60, time() - scan)))
+      else
+        text = text .. " |cff808080- no full scan yet, showing prices seen today|r"
+      end
+    end
   end
   ui.status:SetText(text)
 end
@@ -240,6 +259,76 @@ local function scheduleRebuild(delay)
     rebuildPending = false
     rebuild()
   end)
+end
+
+--------------------------------------------------------------------------------
+-- Sold-out tracking
+--------------------------------------------------------------------------------
+
+local hookedDB     -- the Auctionator.Database whose SetPrice we hooked
+local scanTracked  -- a full scan started while we were recording prices
+
+-- Auctionator records a price for every item in a scan or search result.
+local function onSetPrice(_, dbKey)
+  local id = tonumber(dbKey)
+  local classID = id and select(6, GetItemInfoInstant(id))
+  if classID == EQ.CLASS_WEAPON or classID == EQ.CLASS_ARMOR then
+    EnchantQuexDB.lastSeen[id] = time()
+  end
+  if panel and panel:IsVisible() then scheduleRebuild(1) end
+end
+
+-- Auctionator creates its database late, so this is retried whenever a scan
+-- starts or the auction house opens.
+local function hookDatabase()
+  local db = Auctionator and Auctionator.Database
+  if db and db ~= hookedDB and type(db.SetPrice) == "function" then
+    hooksecurefunc(db, "SetPrice", onSetPrice)
+    hookedDB = db
+  end
+end
+
+-- Listens on Auctionator's (internal) event bus for its two kinds of full scan:
+-- the replicate scan and the browse ("incremental") scan. On completion the
+-- scan's start time, saved by Auctionator, becomes the sold-out cutoff. Scans that
+-- fail never complete, and scans that started before we recorded prices (e.g.
+-- after a /reload mid-scan) are ignored.
+local function listenForScans()
+  local bus = Auctionator and Auctionator.EventBus
+  local full = Auctionator and Auctionator.FullScan and Auctionator.FullScan.Events
+  local browse = Auctionator and Auctionator.IncrementalScan and Auctionator.IncrementalScan.Events
+  if not (bus and full and browse) then return end
+  local starts = { [full.ScanStart or 1] = true, [browse.ScanStart or 2] = true }
+  local startField = {
+    [full.ScanComplete or 3] = "TimeOfLastReplicateScan",
+    [browse.ScanComplete or 4] = "TimeOfLastBrowseScan",
+  }
+  local listener = {}
+  function listener:ReceiveEvent(eventName)
+    if starts[eventName] then
+      hookDatabase()
+      scanTracked = hookedDB ~= nil
+    elseif startField[eventName] then
+      local started = Auctionator.SavedState and Auctionator.SavedState[startField[eventName]]
+      if scanTracked and type(started) == "number" then
+        EnchantQuexDB.lastFullScan = started
+        if panel and panel:IsVisible() then scheduleRebuild(0) end
+      end
+      scanTracked = false
+    end
+  end
+  local names = {}
+  for name in pairs(starts) do names[#names + 1] = name end
+  for name in pairs(startField) do names[#names + 1] = name end
+  pcall(bus.Register, bus, listener, names)
+end
+
+-- Forgets items not seen for 30 days, so lastSeen doesn't grow forever.
+local function pruneLastSeen()
+  local cutoff = time() - 30 * 86400
+  for id, t in pairs(EnchantQuexDB.lastSeen) do
+    if t < cutoff then EnchantQuexDB.lastSeen[id] = nil end
+  end
 end
 
 --------------------------------------------------------------------------------
@@ -322,15 +411,15 @@ local function build()
   local today = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
   today:SetSize(24, 24)
   today:SetPoint("TOPLEFT", 6, -34)
-  today:SetChecked(s.todayOnly)
+  today:SetChecked(s.currentOnly)
   today:SetScript("OnClick", function(self)
-    s.todayOnly = self:GetChecked()
+    s.currentOnly = self:GetChecked()
     offset = 0
     refilter()
   end)
   local todayLabel = today:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
   todayLabel:SetPoint("LEFT", today, "RIGHT", 2, 0)
-  todayLabel:SetText("Only prices seen today (older prices may be gone)")
+  todayLabel:SetText("Hide sold-out items (not in the latest full scan)")
 
   local refresh = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
   refresh:SetSize(90, 22)
@@ -469,14 +558,6 @@ local function createTab()
   panel:SetPoint("BOTTOMRIGHT", -4, 27)
   LibAHTab:CreateTab(TAB_ID, panel, TAB_TEXT, TAB_HEADER)
   build()
-
-  -- Rebuild after Auctionator saves scan results while the tab is open.
-  local db = Auctionator and Auctionator.Database
-  if db and type(db.SetPrice) == "function" then
-    hooksecurefunc(db, "SetPrice", function()
-      if panel:IsVisible() then scheduleRebuild(1) end
-    end)
-  end
   return true
 end
 
@@ -489,6 +570,7 @@ events:SetScript("OnEvent", function(_, event, ...)
       if panel and panel:IsVisible() then scheduleRebuild(0.5) end
     end
   elseif event == "AUCTION_HOUSE_SHOW" then
+    hookDatabase()
     if not createTab() then
       C_Timer.After(0, createTab) -- the auction house UI may finish loading a frame later
     end
@@ -496,6 +578,12 @@ events:SetScript("OnEvent", function(_, event, ...)
 end)
 
 table.insert(ns.onLoad, function()
+  local s = settings()
+  if s.currentOnly == nil then s.currentOnly = true end
+  s.todayOnly = nil -- replaced by currentOnly
+  pruneLastSeen()
+  hookDatabase()
+  listenForScans()
   for _, e in ipairs({ "AUCTION_HOUSE_SHOW", "GET_ITEM_INFO_RECEIVED" }) do
     pcall(events.RegisterEvent, events, e)
   end
