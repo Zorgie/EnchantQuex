@@ -8,7 +8,11 @@
 -- /say from addons is blocked outside instances unless it runs in a hardware event,
 -- so outside a group and instance the announcement waits for the next key press or
 -- click on the game world.
+--
+-- The snapshot is also handed to ns.onTradeComplete (the trade ledger), whether or
+-- not announcements are enabled.
 
+local _, ns = ...
 local SLOTS = MAX_TRADE_ITEMS or 7
 local ENCHANT_SLOT = TRADE_ENCHANT_SLOT or 7
 local MAX_MESSAGE = 255
@@ -39,6 +43,20 @@ local function enchantOf(name, _, _, _, a, b)
   if type(b) == "string" and b ~= "" then return b end
 end
 
+-- Adds an item to a list of { key, link, name, quantity }, merging stacks of the
+-- same item into one entry.
+local function addItem(items, link, name, quantity)
+  local key = link or name
+  quantity = quantity or 1
+  for _, item in ipairs(items) do
+    if item.key == key then
+      item.quantity = item.quantity + quantity
+      return
+    end
+  end
+  items[#items + 1] = { key = key, link = link, name = name, quantity = quantity }
+end
+
 local function takeSnapshot()
   local s = {
     player = UnitName("player"),
@@ -46,6 +64,7 @@ local function takeSnapshot()
     gave = {}, got = {},
     gaveMoney = GetPlayerTradeMoney(), gotMoney = GetTargetTradeMoney(),
   }
+  local gaveItems, gotItems = {}, {}
   for i = 1, SLOTS do
     if i == ENCHANT_SLOT then
       -- Items in the enchant slot stay with their owner; only the enchant matters.
@@ -59,13 +78,16 @@ local function takeSnapshot()
       end
     else
       local name, _, quantity = GetTradePlayerItemInfo(i)
-      if name then s.gave[#s.gave + 1] = itemText(GetTradePlayerItemLink(i), name, quantity) end
+      if name then addItem(gaveItems, GetTradePlayerItemLink(i), name, quantity) end
       local tName, _, tQuantity = GetTradeTargetItemInfo(i)
-      if tName then s.got[#s.got + 1] = itemText(GetTradeTargetItemLink(i), tName, tQuantity) end
+      if tName then addItem(gotItems, GetTradeTargetItemLink(i), tName, tQuantity) end
     end
   end
+  for _, item in ipairs(gaveItems) do s.gave[#s.gave + 1] = itemText(item.link, item.name, item.quantity) end
+  for _, item in ipairs(gotItems) do s.got[#s.got + 1] = itemText(item.link, item.name, item.quantity) end
   if s.gaveMoney > 0 then s.gave[#s.gave + 1] = money(s.gaveMoney) end
   if s.gotMoney > 0 then s.got[#s.got + 1] = money(s.gotMoney) end
+  s.gaveItems, s.gotItems = gaveItems, gotItems
   snapshot = s
 end
 
@@ -158,6 +180,7 @@ events:SetScript("OnEvent", function(_, event, ...)
           queueFlushOnKey()
         end
       end
+      for _, fn in ipairs(ns.onTradeComplete) do fn(s) end
     end
   elseif TradeFrame and TradeFrame:IsShown() then
     takeSnapshot() -- items, money or accept state changed

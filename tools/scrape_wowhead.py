@@ -72,8 +72,11 @@ LIST_CAP = 1000
 MIN_ITEM_SAMPLES = 5
 # Item pages are fetched for a group until it has this many disenchants.
 TARGET_SAMPLES = 1000
-# Item pages are only fetched for groups at or below this item level.
+# Item pages are fetched for groups at or below this item level, and above it
+# only for groups whose material pages hint at more than MIN_AVAILABLE_SAMPLES
+# disenchants in total (a lower bound; partial rows count too).
 MAX_FETCH_ILVL = 40
+MIN_AVAILABLE_SAMPLES = 5000
 
 # Bump when the Data.lua layout changes; Core.lua checks it.
 DATA_FORMAT = 2
@@ -187,6 +190,7 @@ def main():
     meta = {}                       # itemId -> {classs, level, quality, name}
     drops = defaultdict(dict)       # itemId -> matId -> {count, outof, qty}
     listed = defaultdict(set)       # itemId -> set(matId) per filter pages
+    hints = defaultdict(int)        # itemId -> disenchant count seen on any row, even partial
 
     # 1) material pages + filter listings. Only the filter pages define which
     #    items count (disenchantable armor/weapons of uncommon+ quality).
@@ -194,6 +198,7 @@ def main():
         print(f"[mat] {mat_name} ({mat})")
         html = fetch(f"{BASE}/item={mat}", f"mat_{mat}.html", args.refresh)
         for e in listview_data(html, "disenchanted-from"):
+            hints[e["id"]] = max(hints[e["id"]], e.get("outof") or 0)
             row = drop_row(e)
             if row:
                 drops[e["id"]][mat] = row
@@ -216,9 +221,10 @@ def main():
         return listed[iid] <= set(per_mat) and len({d["outof"] for d in per_mat.values()}) == 1
 
     done = {i for i in listed if complete(i)}
-    groups = defaultdict(lambda: {"samples": 0, "items": 0, "todo": []})
+    groups = defaultdict(lambda: {"samples": 0, "items": 0, "todo": [], "available": 0})
     for iid in listed:
         g = groups[group_key(meta[iid])]
+        g["available"] += hints[iid]
         if iid in done:
             samples = next(iter(drops[iid].values()))["outof"]
             if samples >= MIN_ITEM_SAMPLES:
@@ -228,10 +234,13 @@ def main():
             g["todo"].append(iid)
     # Most-disenchanted candidates first; partial rows hint at the sample size.
     for g in groups.values():
-        g["todo"].sort(key=lambda i: -max([d["outof"] for d in drops.get(i, {}).values()] or [0]))
+        g["todo"].sort(key=lambda i: -hints[i])
+
+    def fetchable(key, g):
+        return key[2] <= MAX_FETCH_ILVL or g["available"] > MIN_AVAILABLE_SAMPLES
 
     for key, g in groups.items():
-        if key[2] > MAX_FETCH_ILVL:
+        if not fetchable(key, g):
             g["todo"] = []
 
     def satisfied(g):
@@ -305,10 +314,10 @@ def main():
                     g["items"] += 1
 
     buckets = build_and_write()
-    thin = sum(1 for k, g in groups.items() if k[2] <= MAX_FETCH_ILVL and not satisfied(g))
+    thin = sorted("%d:%d:%d" % k for k, g in groups.items() if fetchable(k, g) and not satisfied(g))
     print(f"Wrote {OUT_FILE}: {len(buckets)} groups from {len(done)} items "
-          f"({fetched} item pages read); {thin} groups at ilvl <= {MAX_FETCH_ILVL} below "
-          f"{TARGET_SAMPLES} disenchants")
+          f"({fetched} item pages read); {len(thin)} fetchable groups below "
+          f"{TARGET_SAMPLES} disenchants: {' '.join(thin)}")
 
 
 def write_lua(buckets):

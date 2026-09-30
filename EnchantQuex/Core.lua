@@ -29,6 +29,8 @@ local GetItemInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
 
 -- Callbacks run once SavedVariables are available (used by Options / MinimapButton).
 ns.onLoad = {}
+-- Callbacks run with TradeAnnounce's snapshot after every completed trade.
+ns.onTradeComplete = {}
 
 --------------------------------------------------------------------------------
 -- Disenchant tables
@@ -258,6 +260,9 @@ SlashCmdList.ENCHANTQUEX = function(input)
     db.enchantHelper = not db.enchantHelper
   elseif cmd == "announce" then
     db.announceTrades = not db.announceTrades
+  elseif cmd == "ledger" then
+    EQ:ToggleLedger()
+    return
   elseif cmd == "minimap" then
     EQ:SetMinimapShown(db.minimap.hide)
   elseif cmd == "prices" then
@@ -268,7 +273,7 @@ SlashCmdList.ENCHANTQUEX = function(input)
     end
     return
   elseif cmd ~= "status" then
-    EQ.Print("/eqx (options) | status | toggle | distance <n> | breakdown | enchants | announce | minimap | prices")
+    EQ.Print("/eqx (options) | status | toggle | distance <n> | breakdown | enchants | announce | ledger | minimap | prices")
     return
   end
   showStatus()
